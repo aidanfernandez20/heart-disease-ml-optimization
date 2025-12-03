@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# Data and Outputs
+data/
+*.csv
+kurtosis_output.txt
+__MACOSX/
+.DS_Store

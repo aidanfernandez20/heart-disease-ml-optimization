@@ -10,6 +10,7 @@ Original file is located at
 # -------------------------------------------------------------------
 # STEP 1: SETUP & IMPORTS
 # -------------------------------------------------------------------
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,26 +29,26 @@ from xgboost import XGBClassifier
 # Evaluation Metrics
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 
-# --- (Optional: Mount Google Drive if using Google Colab) ---
-from google.colab import drive
-drive.mount('/content/drive')
-
-print("Libraries imported and Google Drive mounted.")
+print("Libraries imported.")
+print(f"Current Working Directory: {os.getcwd()}")
 
 # -------------------------------------------------------------------
 # STEP 2: LOAD & EXPLORE DATA
 # -------------------------------------------------------------------
 
 # !!! --- REPLACE THIS WITH THE ACTUAL PATH TO YOUR FILE --- !!!
-file_path = '/content/drive/My Drive/Fall 2025/Machine Learning/Course Project/Dataset/heart.csv'
+file_path = 'data/heart.csv'
+print(f"Looking for file at: {os.path.abspath(file_path)}")
+
+if not os.path.exists(file_path):
+    print("FILE DOES NOT EXIST!")
+else:
+    print("File exists.")
 
 try:
     df = pd.read_csv(file_path)
 except FileNotFoundError:
     print(f"Error: File not found at {file_path}")
-    print("Please update the 'file_path' variable to the correct location in your Google Drive.")
-    # Stop execution if file isn't found
-    # In a real notebook, you'd stop the cell here.
     raise
 
 # --- Initial Data Exploration ---
