@@ -92,7 +92,7 @@ plt.bar(range(1, len(explained_variance) + 1), explained_variance, alpha=0.5, al
 plt.step(range(1, len(cumulative_variance) + 1), cumulative_variance, where='mid', label='Cumulative explained variance')
 plt.ylabel('Explained variance ratio')
 plt.xlabel('Principal component index')
-plt.title('Scree Plot')
+plt.title('PCA Analysis')
 plt.legend(loc='best')
 plt.grid(True)
 plt.show()

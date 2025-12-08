@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+"""
+XGBoost Optimization Script
+"""
+
 import os
 import pandas as pd
 import numpy as np
@@ -6,8 +11,9 @@ import seaborn as sns
 
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, roc_curve
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, fbeta_score, roc_curve, roc_auc_score
+from xgboost import XGBClassifier
+from scipy.spatial import ConvexHull
 
 # -------------------------------------------------------------------
 # STEP 1: LOAD DATA
@@ -49,23 +55,25 @@ print("Data preprocessing complete.")
 # -------------------------------------------------------------------
 # STEP 3: HYPERPARAMETER TUNING
 # -------------------------------------------------------------------
-print("\n--- Starting Hyperparameter Tuning for Logistic Regression ---")
+print("\n--- Starting Hyperparameter Tuning for XGBoost ---")
 
 # Define the parameter grid
 param_grid = {
-    'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000],
-    'solver': ['liblinear', 'lbfgs'],
-    'penalty': ['l2', 'l1', 'elasticnet'],
-    'class_weight': ['balanced', None]
+    'n_estimators': [100, 200],
+    'max_depth': [3, 5, 7],
+    'learning_rate': [0.01, 0.1],
+    'scale_pos_weight': [1, 5], # Handling class imbalance
+    'random_state': [42],
+    'use_label_encoder': [False],
+    'eval_metric': ['logloss']
 }
 
 # Initialize the model
-lr = LogisticRegression(random_state=42, max_iter=1000)
+xgb = XGBClassifier()
 
 # Initialize GridSearchCV
-# Initialize GridSearchCV
 # Using 'f1' for grid search to find a stable model before threshold tuning
-grid_search = GridSearchCV(estimator=lr, param_grid=param_grid, cv=5, scoring='f1', verbose=1, n_jobs=-1)
+grid_search = GridSearchCV(estimator=xgb, param_grid=param_grid, cv=5, scoring='f1', verbose=1, n_jobs=-1)
 
 # Fit GridSearchCV
 grid_search.fit(X_train_scaled, y_train)
@@ -80,7 +88,7 @@ print(f"Best Cross-Validation F1 Score: {grid_search.best_score_:.4f}")
 # -------------------------------------------------------------------
 # BASELINE MODEL EVALUATION (Threshold = 0.5)
 # -------------------------------------------------------------------
-print("\n--- Baseline Logistic Regression Evaluation (Threshold = 0.5) ---")
+print("\n--- Baseline XGBoost Evaluation (Threshold = 0.5) ---")
 
 # Default prediction uses threshold=0.5 internally
 y_pred_baseline = best_model.predict(X_test_scaled)
@@ -104,11 +112,10 @@ cm_base = confusion_matrix(y_test, y_pred_baseline)
 
 plt.figure()
 sns.heatmap(cm_base, annot=True, fmt='d', cmap='Oranges')
-plt.title("Baseline Logistic Regression Confusion Matrix (Threshold = 0.5)")
+plt.title("Baseline XGBoost Confusion Matrix (Threshold = 0.5)")
 plt.ylabel('Actual')
 plt.xlabel('Predicted')
 plt.show()
-
 
 # Get probability predictions
 y_prob = best_model.predict_proba(X_test_scaled)[:, 1]
@@ -118,8 +125,6 @@ print("\n--- Threshold Tuning (Maximizing F2-Score) ---")
 thresholds = np.arange(0.1, 1.0, 0.05)
 best_threshold = 0.5
 best_f2 = 0.0
-
-from sklearn.metrics import fbeta_score
 
 print(f"{'Threshold':<10} | {'F2-Score':<10} | {'Recall':<10} | {'Precision':<10}")
 print("-" * 50)
@@ -161,43 +166,60 @@ print(classification_report(y_test, y_final_pred))
 print("Confusion Matrix:")
 cm = confusion_matrix(y_test, y_final_pred)
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-plt.title(f"Optimized Logistic Regression (Threshold={best_threshold:.2f})")
+plt.title(f"Optimized XGBoost (Threshold={best_threshold:.2f})")
 plt.ylabel('Actual')
 plt.xlabel('Predicted')
 plt.show()
 
 # -------------------------------------------------------------------
-# STEP 5: ROC Curve with Single Threshold Point
+# STEP 5: ROC Curve + Convex Hull + Annotations
 # -------------------------------------------------------------------
+custom_thresholds = np.arange(0.1, 1.0, 0.05)
 
-# True ROC curve from probabilities
+# Compute FPR/TPR for each threshold
+fprs = []
+tprs = []
+
+for thr in custom_thresholds:
+    y_pred_thr = (y_prob >= thr).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_test, y_pred_thr).ravel()
+
+    fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+    tpr = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+    fprs.append(fpr)
+    tprs.append(tpr)
+
+fprs = np.array(fprs)
+tprs = np.array(tprs)
+
+# For comparison, compute true ROC curve
 fpr_full, tpr_full, _ = roc_curve(y_test, y_prob)
 
-# Choose which threshold to highlight (e.g., 0.30)
-target_threshold = 0.35  # or best_threshold if you prefer
+# ------------------------------------------------------------------
+# Plot
+# ------------------------------------------------------------------
 
-# Get point in ROC space for that threshold
-y_pred_thr = (y_prob >= target_threshold).astype(int)
-tn, fp, fn, tp = confusion_matrix(y_test, y_pred_thr).ravel()
-
-fpr_point = fp / (fp + tn) if (fp + tn) > 0 else 0.0
-tpr_point = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-
-plt.figure(figsize=(8, 6))
+plt.figure(figsize=(8,6))
 
 # Random classifier line
-plt.plot([0, 1], [0, 1], "k--", alpha=0.5, label="Random Classifier")
+plt.plot([0,1], [0,1], "k--", alpha=0.5, label="Random Classifier")
 
-# Full ROC curve
+# Full ROC curve (optional context)
 plt.plot(fpr_full, tpr_full, label="ROC Curve", alpha=0.4)
 
-# Single red point for the chosen threshold
-plt.scatter(fpr_point, tpr_point, color="red",
-            label=f"Threshold = {target_threshold:.2f}")
+target_threshold = 0.30
 
-# Annotate that point
-plt.annotate(f"{target_threshold:.2f}",
-             (fpr_point, tpr_point),
+# Find the index of the threshold 0.30
+idx = np.argmin(np.abs(custom_thresholds - target_threshold))
+
+# Get its coordinates
+x_30 = fprs[idx]
+y_30 = tprs[idx]
+plt.scatter(x_30, y_30, color="red", label="Threshold Models")
+# Annotate it
+plt.annotate("0.30",
+             (x_30, y_30),
              textcoords="offset points",
              xytext=(5, -5),
              fontsize=10,
@@ -205,8 +227,7 @@ plt.annotate(f"{target_threshold:.2f}",
 
 plt.xlabel("False Positive Rate (FPR)")
 plt.ylabel("True Positive Rate (TPR)")
-plt.title("Logistic Regression in ROC Space (varying thresholds)")
+plt.title("XGBoost Models in ROC Space (varying thresholds)")
 plt.legend()
 plt.grid(True)
 plt.show()
-
